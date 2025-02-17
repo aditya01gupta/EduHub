@@ -1,0 +1,157 @@
+import sqlite3
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+
+# User profile storing points and badges
+user_profile = {
+    "name": "Student",
+    "points": 0,
+    "badges": [],
+    "study_sessions": []
+}
+
+# Badge milestones
+BADGES = {
+    50: "Beginner Learner",
+    100: "Intermediate Scholar",
+    200: "Advanced Achiever",
+    500: "Mastermind"
+}
+
+def setup_database():
+    conn = sqlite3.connect("study_log.db")
+    cursor = conn.cursor()
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS study_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        date TEXT,
+                        subject TEXT,
+                        topic TEXT,
+                        time_spent INTEGER,
+                        difficulty TEXT,
+                        score INTEGER)''')
+
+    conn.commit()
+    conn.close()
+
+def track_study(subject, topic, time_spent, difficulty, score):
+    conn = sqlite3.connect("study_log.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "INSERT INTO study_log (date, subject, topic, time_spent, difficulty, score) VALUES (datetime('now'), ?, ?, ?, ?, ?)",
+        (subject, topic, time_spent, difficulty, score))
+
+    conn.commit()
+    conn.close()
+
+    print("Study log updated successfully!")
+
+def check_badges():
+    """ Checks and awards badges based on points."""
+    for milestone, badge in BADGES.items():
+        if user_profile["points"] >= milestone and badge not in user_profile["badges"]:
+            user_profile["badges"].append(badge)
+            print(f"🎉 Congratulations! You earned the '{badge}' badge!")
+
+def add_study_session(topic, duration):
+    """ Adds a study session and updates points."""
+    points_earned = duration // 10  # 1 point per 10 minutes
+    user_profile["points"] += points_earned
+    user_profile["study_sessions"].append({"topic": topic, "duration": duration, "points": points_earned})
+
+    check_badges()
+    print(f"You studied {topic} for {duration} minutes and earned {points_earned} points!")
+
+def analyze_performance():
+    conn = sqlite3.connect("study_log.db")
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT subject, AVG(score) FROM study_log GROUP BY subject")
+    results = cursor.fetchall()
+
+    cursor.execute("SELECT topic, time_spent FROM study_log")
+    result2 = cursor.fetchall()
+
+    conn.close()
+
+    print("\nAverage Scores by Subject:")
+    for subject, avg_score in results:
+        print(f"{subject}: {avg_score:.2f}")
+
+    for topic,time_spent in result2:
+        add_study_session(topic,time_spent)
+
+
+def suggest_study_schedule():
+    conn = sqlite3.connect("study_log.db")
+    df = pd.read_sql_query("SELECT time_spent, score FROM study_log", conn)
+    conn.close()
+
+    if df.empty:
+        print("No study data available to generate schedule.")
+        return
+
+    df["time_spent"] = df["time_spent"].astype(float)
+    df["score"] = df["score"].astype(float)
+
+    X = df[["time_spent"]]
+    y = df["score"]
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    predicted_score = model.predict([[90]])  # Predict for 90 minutes of study
+    print(f"\nPredicted score if you study for 90 minutes: {predicted_score[0]:.2f}")
+
+
+def show_progress():
+    """ Displays the user's current progress."""
+    print("\n===== Your Progress =====")
+    print(f"Total Points: {user_profile['points']}")
+    print("Badges Earned:", ", ".join(user_profile["badges"]) if user_profile["badges"] else "None")
+    print("Study Sessions:")
+    for session in user_profile["study_sessions"]:
+        print(f"- {session['topic']}: {session['duration']} mins ({session['points']} pts)")
+
+
+def main():
+    setup_database()
+
+    while True:
+        print("\nPersonalized Learning Assistant")
+        print("1. Log Study Session")
+        print("2. Analyze Performance")
+        print("3. Suggest Study Schedule")
+        print("4. Show Progress")
+        print("5. Exit")
+
+        choice = input("Enter your choice: ")
+
+        if choice == "1":
+            subject = input("Enter subject: ")
+            topic = input("Enter topic: ")
+            time_spent = int(input("Enter time spent (minutes): "))
+            difficulty = input("Enter difficulty (Easy/Medium/Hard): ")
+            score = int(input("Enter your score (0-100): "))
+            track_study(subject, topic, time_spent, difficulty, score)
+
+        elif choice == "2":
+            analyze_performance()
+
+        elif choice == "3":
+            suggest_study_schedule()
+
+        elif choice == "4":
+            show_progress()
+
+        elif choice == "5":
+            print("Exiting...")
+            break
+
+        else:
+            print("Invalid choice! Please try again.")
+
+
+if __name__ == "__main__":
+    main()
